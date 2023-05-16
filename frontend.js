@@ -5,6 +5,20 @@ import { nanoid } from 'nanoid'
 const socket = io("http://localhost:5000")
 const userName = nanoid(4)
 const room1 = nanoid(6)
+const scoreCategories = [
+    { category: 'EARLY_FIVE', score: 40 },
+    { category: 'EARLY_SEVEN', score: 30 },
+    { category: 'MIDDLE_NUMBER', score: 30 },
+    { category: 'FIRST_LINE', score: 20 },
+    { category: 'MIDDLE_LINE', score: 20 },
+    { category: 'LAST_LINE', score: 20 },
+    { category: 'CORNERS_1', score: 50 },
+    { category: 'STAR_1', score: 50 },
+    { category: 'FULL_HOUSE_1', score: 100 },
+    { category: 'CORNERS_2', score: 30 },
+    { category: 'STAR_2', score: 30 },
+    { category: 'FULL_HOUSE_2', score: 70 }
+]
 
 function App() {
     const [message, setMessage] = React.useState('')
@@ -13,8 +27,14 @@ function App() {
     const [numbers, setNumbers] = React.useState([])
     const [calledNumbers, setCalledNumbers] = React.useState([])
     const [struckNumbers, setStruckNumbers] = React.useState([])
+    const [scoredCategories, setScoredCategories] = React.useState([])
 
     console.log("chat", chat)
+
+    const handleCategoryClick = (category) => {
+        console.log("category clicked", category)
+        socket.emit('category', { scoreCategory: category, userName: userName, room: room1 })
+    }
 
     const handleNumberClick = (number) => {
         console.log("clicked number ", number)
@@ -37,6 +57,7 @@ function App() {
     }
 
     React.useEffect(() => {
+
         socket.on('chat', (payload) => {
             console.log("payload", payload)
             setChat([...chat, payload])
@@ -63,12 +84,22 @@ function App() {
             }
         })
 
+        socket.on('category', (payload) => {
+            console.log("category", payload)
+            if (payload.userName === userName) {
+                setScoredCategories([...scoredCategories, ...payload.scoreCategory.map((item) => item.category)])
+            }
+        })
+
     })
+
+    console.log("scoredCategories", scoredCategories)
 
     return (
         <div>
             <h1>My Chat App</h1>
             <h3>My Room : {currentRoom}</h3>
+            <h3>User Name : {userName}</h3>
 
             {numbers.map((item) => (
                 <p key={item} onClick={() => handleNumberClick(item)} style={{ display: 'inline-block', marginRight: '10px', cursor: 'pointer', textDecoration: struckNumbers.includes(item) ? 'line-through' : '' }}>
@@ -95,6 +126,11 @@ function App() {
 
             <div style={{ margin: '20px' }} >
                 <button onClick={handleStartCallNumber} >Start number call</button>
+            </div>
+            <div style={{ margin: '20px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {scoreCategories.map((item, index) => (
+                    <button key={index} style={{ backgroundColor: scoredCategories.includes(item.category) ? 'green' : '' }} onClick={() => handleCategoryClick(item)} >{item.category}</button>
+                ))}
             </div>
             {calledNumbers.map((item) => (
                 <p key={item} style={{ display: 'inline-block', marginRight: '10px' }}>

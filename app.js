@@ -39,8 +39,12 @@ const userSchema = new mongoose.Schema({
     userName: String,
     winStatus: { type: Boolean, default: false },
     score: { type: Number, default: 0 },
-    scoreCategory: [{ type: String }]
+    scoreCategory: [{
+        category: { type: String },
+        score: { type: Number }
+    }]
 });
+
 
 const calledNumbersSchema = new mongoose.Schema({
     numbers: [Number],
@@ -108,7 +112,7 @@ io.on('connection', async (socket) => {
     })
 
     socket.on('callNumbers', async (payload) => {
-        const { userName, room } = payload
+        const { userName, room, timeInterval } = payload
         // Create an array to store the numbers that have already been called
         let calledNumbers = [];
 
@@ -147,7 +151,7 @@ io.on('connection', async (socket) => {
             if (calledNumbers.length >= 90) {
                 clearInterval(intervalId);
             }
-        }, 500);
+        }, timeInterval || 500);
     });
 
     socket.on('struckNumber', async (payload) => {
@@ -174,7 +178,25 @@ io.on('connection', async (socket) => {
     })
 
     socket.on('category', async (payload) => {
-        const { userName, room } = payload
+        const { userName, room, scoreCategory } = payload
+        console.log("category payload ", payload)
+        // Get the user and update the scoreCategory array 
+        const user = await User.findOne({ userName: userName })
+        console.log("user ", user)
+        if (user) {
+            user.scoreCategory.push(scoreCategory)
+            // get all the scores in the scoreCategory array and add the score
+            let score = user.scoreCategory.reduce((accumulator, currentValue) => {
+                return accumulator + currentValue.score;
+            }, 0);
+            console.log("score ", score)
+            // update score in user
+            await User.findOneAndUpdate({ userName: userName }, { scoreCategory: user.scoreCategory, score: score })
+            console.log("user updated")
+            io.to(room).emit('category', { userName: userName, scoreCategory: user.scoreCategory, score: score })
+        } else {
+            console.log("user not found")
+        }
 
     })
 
@@ -222,4 +244,6 @@ io.on('connection', async (socket) => {
 server.listen(5000, () => {
     console.log('listening on port 5000');
 })
+
+
 
