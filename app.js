@@ -102,9 +102,18 @@ io.on('connection', async (socket) => {
         try {
             await ticket.save();
             await user.save();
+
+            // get all tickets in the room
+            const tickets = await Ticket.find({ room: room })
+
+            // get all the userNames in tickets and put in an array
+            const allUserNames = tickets.map((ticket) => ticket.userName)
+            console.log("allUserNames ", allUserNames)
+
             io.to(room).emit('private', {
                 userName: userName,
-                numbers: randomNumbers
+                numbers: randomNumbers,
+                allUserNames: allUserNames
             });
         } catch (error) {
             console.log("erron in saving ticket ", error)
