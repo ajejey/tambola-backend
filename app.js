@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const app = express();
 
@@ -10,7 +11,7 @@ const io = require('socket.io')(server, {
 });
 
 // mongoDB connection
-const MONGODB_URI = "mongodb+srv://renurad98:mathco%401234@cluster0.8cipnma.mongodb.net/tambolaDB"
+const MONGODB_URI = process.env.MONGODB_URI
 const mongoose = require('mongoose');
 mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
@@ -34,7 +35,12 @@ const ticketSchema = new mongoose.Schema({
     ticketDate: { type: Date, default: Date.now }
 });
 
-
+const userSchema = new mongoose.Schema({
+    userName: String,
+    winStatus: { type: Boolean, default: false },
+    score: { type: Number, default: 0 },
+    scoreCategory: [{ type: String }]
+});
 
 const calledNumbersSchema = new mongoose.Schema({
     numbers: [Number],
@@ -44,6 +50,23 @@ const calledNumbersSchema = new mongoose.Schema({
 const Chat = mongoose.model('Chat', chatSchema);
 const Ticket = mongoose.model('Ticket', ticketSchema);
 const CalledNumbers = mongoose.model('CalledNumbers', calledNumbersSchema);
+const User = mongoose.model('User', userSchema);
+
+const scoreCategories = [
+    { category: 'EARLY_FIVE', score: 40, description: 'First five numbers marked' },
+    { category: 'EARLY_SEVEN', score: 30, description: 'First seven numbers marked' },
+    { category: 'MIDDLE_NUMBER', score: 30, description: 'Middle number marked' },
+    { category: 'FIRST_LINE', score: 20, description: 'First line completed' },
+    { category: 'MIDDLE_LINE', score: 20, description: 'Middle line completed' },
+    { category: 'LAST_LINE', score: 20, description: 'Last line completed' },
+    { category: 'CORNERS_1', score: 50, description: 'First set of corner numbers marked' },
+    { category: 'STAR_1', score: 50, description: 'Star pattern completed (Set 1)' },
+    { category: 'FULL_HOUSE_1', score: 100, description: 'Full house completed (Set 1)' },
+    { category: 'CORNERS_2', score: 30, description: 'Second set of corner numbers marked' },
+    { category: 'STAR_2', score: 30, description: 'Star pattern completed (Set 2)' },
+    { category: 'FULL_HOUSE_2', score: 70, description: 'Full house completed (Set 2)' }
+]
+
 
 io.on('connection', async (socket) => {
     console.log('a user connected ', socket.id);
@@ -66,8 +89,15 @@ io.on('connection', async (socket) => {
             room: room
         })
 
+        // create a new user with userName
+        const user = new User({
+            userName: userName,
+            scoreCategory: [],
+        })
+
         try {
             await ticket.save();
+            await user.save();
             io.to(room).emit('private', {
                 userName: userName,
                 numbers: randomNumbers
@@ -141,6 +171,11 @@ io.on('connection', async (socket) => {
                 }
             }
         }
+    })
+
+    socket.on('category', async (payload) => {
+        const { userName, room } = payload
+
     })
 
     // Listen for a chat message
