@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const app = express();
+var tambola = require('tambola-generator');
 
 const server = require('http').createServer(app);
 
@@ -71,6 +72,81 @@ const scoreCategories = [
     { category: 'FULL_HOUSE_2', score: 70, description: 'Full house completed (Set 2)' }
 ]
 
+// Function to generate a random number within a given range
+function getRandomNumber(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// Function to generate a Tambola ticket
+function generateTambolaTicket() {
+    const ticket = [];
+
+    // Generate numbers for each column
+    for (let column = 1; column <= 9; column++) {
+        const columnNumbers = [];
+        let minRange = (column - 1) * 10 + 1;
+        let maxRange = (column * 10) - 1;
+
+        // Generate numbers for each row in the column
+        for (let row = 0; row < 3; row++) {
+            let number = getRandomNumber(minRange, maxRange);
+
+            // Check if the generated number is already present in the column
+            while (columnNumbers.includes(number)) {
+                number = getRandomNumber(minRange, maxRange);
+            }
+
+            columnNumbers.push(number);
+        }
+
+        ticket.push(columnNumbers);
+    }
+
+    // Count the total number of nulls in myArray
+    function countTotalNulls(arr) {
+        let totalNulls = 0;
+        for (let i = 0; i < arr.length; i++) {
+            totalNulls += arr[i].filter((element) => element === null).length;
+        }
+        return totalNulls;
+    }
+
+    // Iterate until the total number of nulls is exactly 12
+    while (countTotalNulls(ticket) < 12) {
+        let randomRowIndex = getRandomNumber(0, ticket.length - 1);
+        let nullCount = ticket[randomRowIndex].filter((element) => element === null).length;
+        if (nullCount < 2) {
+            let randomColIndex = getRandomNumber(0, ticket[randomRowIndex].length - 1);
+            if (ticket[randomRowIndex][randomColIndex] !== null) {
+                ticket[randomRowIndex][randomColIndex] = null;
+            }
+        }
+    }
+
+    console.log(ticket);
+
+
+    return ticket;
+}
+
+
+
+
+
+// // Display the generated ticket
+// console.log("Tambola Ticket:");
+// for (let row = 0; row < 3; row++) {
+//     let rowString = "";
+//     for (let column = 0; column < 9; column++) {
+//         if (tambolaTicket[column][row]) {
+//             rowString += tambolaTicket[column][row] + "\t";
+//         } else {
+//             rowString += "\t";
+//         }
+//     }
+//     console.log(rowString);
+// }
+
 
 io.on('connection', async (socket) => {
     console.log('a user connected ', socket.id);
@@ -89,12 +165,17 @@ io.on('connection', async (socket) => {
 
     socket.on('getTicket', async (payload) => {
         const { userName, room } = payload
-        // get 15 random numbers from 1 to 90
-        const numbers = Array.from({ length: 90 }, (_, i) => i + 1);
-        // const shuffledNumbers = numbers.sort(() => Math.random() - 0.5);
-        const randomNumbers = numbers.slice(0, 15);
-        console.log("randomNumbers ", randomNumbers)
         console.log("joined room ", room)
+
+        // get 15 random numbers from 1 to 90
+        // const numbers = Array.from({ length: 90 }, (_, i) => i + 1);
+        // const shuffledNumbers = numbers.sort(() => Math.random() - 0.5);
+        // const randomNumbers = shuffledNumbers.slice(0, 15);
+        // console.log("randomNumbers ", randomNumbers)        
+
+        // Generate a Tambola ticket
+        // const tambolaTicket = generateTambolaTicket();
+        let randomNumbers = generateTambolaTicket();
 
         // save numbers along with userName to the database
         const ticket = new Ticket({
