@@ -246,7 +246,7 @@ io.on('connection', async (socket) => {
 
 
             // Emit the number to the user
-            io.to(room).emit('calledNumber', randomNumber);
+            io.to(room).emit('calledNumber', calledNumbers);
 
             // Stop emitting numbers after 90 have been called
             if (calledNumbers.length >= 90) {
