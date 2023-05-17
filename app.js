@@ -78,11 +78,21 @@ io.on('connection', async (socket) => {
     // Join a room
     socket.on('join', async (payload) => {
         const { userName, room } = payload
+        console.log("joined room ", room)
         socket.join(room)
+        io.to(room).emit('join', {
+            userName: userName,
+            room: room
+        });
+
+    })
+
+    socket.on('getTicket', async (payload) => {
+        const { userName, room } = payload
         // get 15 random numbers from 1 to 90
         const numbers = Array.from({ length: 90 }, (_, i) => i + 1);
-        const shuffledNumbers = numbers.sort(() => Math.random() - 0.5);
-        const randomNumbers = shuffledNumbers.slice(0, 15);
+        // const shuffledNumbers = numbers.sort(() => Math.random() - 0.5);
+        const randomNumbers = numbers.slice(0, 15);
         console.log("randomNumbers ", randomNumbers)
         console.log("joined room ", room)
 
@@ -122,6 +132,7 @@ io.on('connection', async (socket) => {
 
     socket.on('callNumbers', async (payload) => {
         const { userName, room, timeInterval } = payload
+        console.log("room in callNumbers", room)
         // Create an array to store the numbers that have already been called
         let calledNumbers = [];
 
