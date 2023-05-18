@@ -148,37 +148,93 @@ function generateTambolaTicket() {
         ticket.push(columnNumbers);
     }
 
-    console.log("original Ticket ", ticket)
+    // console.log("original Ticket ", ticket)
 
     ticket.forEach((item) => {
         item.sort((a, b) => a - b);
     })
 
-    // Count the total number of nulls in myArray
-    function countTotalNulls(arr) {
-        let totalNulls = 0;
-        for (let i = 0; i < arr.length; i++) {
-            totalNulls += arr[i].filter((element) => element === null).length;
-        }
-        return totalNulls;
+    function transposeArray(array) {
+        return array[0].map((_, columnIndex) => array.map(row => row[columnIndex]));
     }
 
-    // Iterate until the total number of nulls is exactly 12
-    while (countTotalNulls(ticket) < 12) {
-        let randomRowIndex = getRandomNumber(0, ticket.length - 1);
-        let nullCount = ticket[randomRowIndex].filter((element) => element === null).length;
-        if (nullCount < 2) {
-            let randomColIndex = getRandomNumber(0, ticket[randomRowIndex].length - 1);
-            if (ticket[randomRowIndex][randomColIndex] !== null) {
-                ticket[randomRowIndex][randomColIndex] = null;
+    let transposedArray = transposeArray(ticket);
+    // console.log("transposedArray 1", transposedArray);
+
+    let nullSpots = [
+        [[0, 3, 7, 8], [1, 4, 6, 8], [0, 1, 4, 5]],
+        [[1, 2, 3, 7], [0, 4, 6, 8], [1, 2, 5, 6]],
+        [[1, 2, 5, 7], [0, 3, 6, 8], [2, 4, 5, 6]],
+        [[1, 2, 5, 6], [0, 3, 7, 8], [1, 4, 6, 8]],
+        [[0, 2, 5, 7], [1, 3, 6, 8], [0, 4, 5, 6]],
+        [[0, 4, 5, 8], [3, 6, 7, 8], [2, 5, 6, 7]],
+        [[0, 2, 4, 7], [1, 3, 4, 6], [0, 1, 3, 5]],
+        [[0, 2, 4, 7], [1, 3, 6, 8], [0, 4, 5, 6]],
+        [[2, 3, 4, 6], [1, 2, 5, 6], [0, 1, 3, 4]],
+        [[1, 2, 3, 4], [0, 1, 4, 7], [0, 2, 3, 5]],
+        [[0, 1, 4, 8], [2, 3, 4, 6], [0, 2, 3, 5]],
+        [[0, 1, 7, 8], [3, 4, 5, 7], [0, 2, 4, 5]],
+    ]
+
+    // pick a random nullSpots array
+    let randomNo = Math.floor(Math.random() * nullSpots.length)
+    console.log("nulspots index chosen", randomNo);
+    for (let i = 0; i < transposedArray.length; i++) {
+        let randomNullSpot = nullSpots[randomNo];
+        transposedArray[i][randomNullSpot[i][0]] = null;
+        transposedArray[i][randomNullSpot[i][1]] = null;
+        transposedArray[i][randomNullSpot[i][2]] = null;
+        transposedArray[i][randomNullSpot[i][3]] = null;
+
+    }
+
+    // console.log("transposedArray 2", transposedArray);
+    let transposedBackArray = transposeArray(transposedArray);
+
+
+    function displayTicket(array) {
+        let output = '';
+        for (let i = 0; i < array.length; i++) {
+            for (let j = 0; j < array[i].length; j++) {
+                const value = array[i][j];
+                const formattedValue = value !== null ? value.toString().padStart(2, '0') : '  ';
+                output += formattedValue + ' ';
             }
+            output += '\n';
         }
+        return output;
     }
 
-    console.log(ticket);
+    let ticket1 = displayTicket(transposedBackArray);
+    console.log(ticket1);
+
+    // // Count the total number of nulls in myArray
+    // function countTotalNulls(arr) {
+    //     let totalNulls = 0;
+    //     for (let i = 0; i < arr.length; i++) {
+    //         totalNulls += arr[i].filter((element) => element === null).length;
+    //     }
+    //     return totalNulls;
+    // }
+
+    // // Iterate until the total number of nulls is exactly 12
+    // while (countTotalNulls(ticket) < 12) {
+    //     let randomRowIndex = getRandomNumber(0, ticket.length - 1);
+    //     let nullCount = ticket[randomRowIndex].filter((element) => element === null).length;
+    //     if (nullCount < 2) {
+    //         let randomColIndex = getRandomNumber(0, ticket[randomRowIndex].length - 1);
+    //         if (ticket[randomRowIndex][randomColIndex] !== null) {
+    //             ticket[randomRowIndex][randomColIndex] = null;
+    //         }
+    //     }
+    // }
 
 
-    return ticket;
+
+    // console.log(ticket);
+
+
+    return transposedBackArray;
 }
 
 
