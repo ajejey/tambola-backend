@@ -27,10 +27,10 @@ const chatSchema = new mongoose.Schema({
 })
 
 const ticketSchema = new mongoose.Schema({
-    numbers: [{
+    numbers: [[{
         value: Number,
         struck: { type: Boolean, default: false }
-    }],
+    }]],
     userName: String,
     room: String,
     ticketDate: { type: Date, default: Date.now }
@@ -85,7 +85,7 @@ function generateTambolaTicket() {
     for (let column = 1; column <= 9; column++) {
         const columnNumbers = [];
         let minRange = (column - 1) * 10 + 1;
-        let maxRange = (column * 10) - 1;
+        let maxRange = column == 9 ? (column * 10) : (column * 10) - 1;
 
         // Generate numbers for each row in the column
         for (let row = 0; row < 3; row++) {
@@ -101,6 +101,12 @@ function generateTambolaTicket() {
 
         ticket.push(columnNumbers);
     }
+
+    console.log("original Ticket ", ticket)
+
+    ticket.forEach((item) => {
+        item.sort((a, b) => a - b);
+    })
 
     // Count the total number of nulls in myArray
     function countTotalNulls(arr) {
@@ -130,6 +136,7 @@ function generateTambolaTicket() {
 }
 
 
+// let tambolaTicket = generateTambolaTicket();
 
 
 
@@ -147,6 +154,24 @@ function generateTambolaTicket() {
 //     console.log(rowString);
 // }
 
+const array = [
+    [4, 5, null],
+    [null, null, 18],
+    [24, 25, 29],
+    [null, null, 39],
+    [null, 47, null],
+    [null, null, 59],
+    [null, 63, null],
+    [74, null, 79],
+    [81, 84, 88]
+];
+
+const struckArray = array.map(row => row.map(element => {
+    return { value: element, struck: false };
+}));
+
+console.log(struckArray);
+
 
 io.on('connection', async (socket) => {
     console.log('a user connected ', socket.id);
@@ -156,6 +181,19 @@ io.on('connection', async (socket) => {
         const { userName, room } = payload
         console.log("joined room ", room)
         socket.join(room)
+
+        // create a new user with userName
+        const user = new User({
+            userName: userName,
+            scoreCategory: [],
+        })
+
+        try {
+            await user.save();
+        } catch (error) {
+            console.log(error);
+        }
+
         io.to(room).emit('join', {
             userName: userName,
             room: room
@@ -165,50 +203,63 @@ io.on('connection', async (socket) => {
 
     socket.on('getTicket', async (payload) => {
         const { userName, room } = payload
-        console.log("joined room ", room)
 
-        // get 15 random numbers from 1 to 90
-        // const numbers = Array.from({ length: 90 }, (_, i) => i + 1);
-        // const shuffledNumbers = numbers.sort(() => Math.random() - 0.5);
-        // const randomNumbers = shuffledNumbers.slice(0, 15);
-        // console.log("randomNumbers ", randomNumbers)        
+        // check if user exists in the database
+        const user = await User.findOne({ userName: userName })
+        if (!user) {
+            io.to(room).emit('error', {
+                error: "User does not exist, please join a room"
+            })
+        } else {
+            // check if a ticket exists with the userName and room in the database
+            const ticket = await Ticket.findOne({ userName: userName, room: room })
+            if (!ticket) {
+                let randomNumbers = generateTambolaTicket();
 
-        // Generate a Tambola ticket
-        // const tambolaTicket = generateTambolaTicket();
-        let randomNumbers = generateTambolaTicket();
+                // save numbers along with userName to the database
+                const ticket = new Ticket({
+                    userName: userName,
+                    numbers: randomNumbers.map(row => row.map(element => {
+                        return { value: element, struck: false };
+                    })),
+                    room: room
+                })
 
-        // save numbers along with userName to the database
-        const ticket = new Ticket({
-            userName: userName,
-            numbers: randomNumbers.map((value) => ({ value, struck: false })),
-            room: room
-        })
+                try {
+                    await ticket.save();
 
-        // create a new user with userName
-        const user = new User({
-            userName: userName,
-            scoreCategory: [],
-        })
+                    // get all tickets in the room
+                    const tickets = await Ticket.find({ room: room })
 
-        try {
-            await ticket.save();
-            await user.save();
+                    // get all the userNames in tickets and put in an array
+                    const allUserNames = tickets.map((ticket) => ticket.userName)
+                    console.log("allUserNames ", allUserNames)
 
-            // get all tickets in the room
-            const tickets = await Ticket.find({ room: room })
+                    io.to(room).emit('private', {
+                        userName: userName,
+                        numbers: randomNumbers,
+                        allUserNames: allUserNames
+                    });
+                } catch (error) {
+                    console.log("erron in saving ticket ", error)
+                }
+            } else {
+                // get all tickets in the room
+                const tickets = await Ticket.find({ room: room })
 
-            // get all the userNames in tickets and put in an array
-            const allUserNames = tickets.map((ticket) => ticket.userName)
-            console.log("allUserNames ", allUserNames)
+                // get all the userNames in tickets and put in an array
+                const allUserNames = tickets.map((ticket) => ticket.userName)
+                console.log("allUserNames ", allUserNames)
 
-            io.to(room).emit('private', {
-                userName: userName,
-                numbers: randomNumbers,
-                allUserNames: allUserNames
-            });
-        } catch (error) {
-            console.log("erron in saving ticket ", error)
+                io.to(room).emit('private', {
+                    userName: userName,
+                    numbers: ticket.numbers.map(row => row.map(obj => obj.value)),
+                    allUserNames: allUserNames
+                });
+            }
         }
+
+
     })
 
     socket.on('callNumbers', async (payload) => {
