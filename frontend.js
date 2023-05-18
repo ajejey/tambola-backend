@@ -89,6 +89,10 @@ function App() {
 
     }
 
+    const handleGetTicketClick = () => {
+        socket.emit('getTicket', { userName: userName, room: room1 })
+    }
+
     const handleCategoryClick = (category) => {
         console.log("category clicked", category)
         socket.emit('category', { scoreCategory: category, userName: userName, room: room1 })
@@ -128,12 +132,18 @@ function App() {
             console.log('Private message:', msg);
             console.log(msg.userName, userName)
             if (msg.userName === userName) {
-                setNumbers([...numbers, ...msg.numbers])
+                // flatten the array of arrays 
+                let flatArray = msg.numbers.flat()
+                console.log("flatArray", flatArray)
+                setNumbers([...numbers, ...flatArray])
             }
         });
 
         socket.on('calledNumber', (payload) => {
-            setCalledNumbers([...calledNumbers, payload])
+            let allNums = [...calledNumbers, ...payload]
+            // get unique elements from allNums
+            let uniqueNums = [...new Set(allNums)]
+            setCalledNumbers([...uniqueNums])
         })
 
         socket.on('struckNumber', (payload) => {
@@ -152,6 +162,8 @@ function App() {
 
     })
 
+    console.log("struckNumbers ", struckNumbers)
+
     console.log("scoredCategories", scoredCategories)
 
     return (
@@ -159,6 +171,8 @@ function App() {
             <h1>My Chat App</h1>
             <h3>My Room : {currentRoom}</h3>
             <h3>User Name : {userName}</h3>
+
+            <button onClick={handleGetTicketClick}>Get my Ticket</button>
 
             {numbers.map((item) => (
                 <p key={item} onClick={() => handleNumberClick(item)} style={{ display: 'inline-block', marginRight: '10px', cursor: 'pointer', textDecoration: struckNumbers.includes(item) ? 'line-through' : '' }}>

@@ -309,24 +309,39 @@ io.on('connection', async (socket) => {
     socket.on('struckNumber', async (payload) => {
         const { number, userName, room } = payload
         // check if the number is in calledNumbers in database
-        const calledNumbers = await CalledNumbers.findOne({ room: room })
-        if (calledNumbers) {
-            console.log("calledNumbers in db for (struck number)", calledNumbers)
-            console.log("struck number exists, ", calledNumbers.numbers.includes(number))
-            if (calledNumbers.numbers.includes(number)) {
+        try {
+            const calledNumbers = await CalledNumbers.findOne({ room: room })
+            if (calledNumbers) {
+                console.log("calledNumbers in db for (struck number)", calledNumbers)
                 console.log("struck number exists, ", calledNumbers.numbers.includes(number))
-                const userTicket = await Ticket.findOne({ userName: userName, room: room })
-                if (userTicket) {
-                    userTicket.numbers.forEach((item, index) => {
-                        if (item.value === number) {
-                            userTicket.numbers[index].struck = true;
+                if (calledNumbers.numbers.includes(number)) {
+                    console.log("struck number exists, ", calledNumbers.numbers.includes(number))
+                    const userTicket = await Ticket.findOne({ userName: userName, room: room })
+                    if (userTicket) {
+                        // userTicket.numbers.forEach((item, index) => {
+                        //     if (item.value === number) {
+                        //         userTicket.numbers[index].struck = true;
+                        //     }
+                        // })
+
+                        for (let i = 0; i < userTicket.numbers.length; i++) {
+                            for (let j = 0; j < userTicket.numbers[i].length; j++) {
+                                if (userTicket.numbers[i][j].value === number) {
+                                    userTicket.numbers[i][j].struck = true;
+                                    break;
+                                }
+                            }
                         }
-                    })
-                    await Ticket.findOneAndUpdate({ userName: userName, room: room }, { numbers: userTicket.numbers })
-                    io.to(room).emit('struckNumber', { number: number, userName: userName });
+
+                        await Ticket.findOneAndUpdate({ userName: userName, room: room }, { numbers: userTicket.numbers })
+                        io.to(room).emit('struckNumber', { number: number, userName: userName });
+                    }
                 }
             }
+        } catch (error) {
+            console.log(error)
         }
+
     })
 
     socket.on('category', async (payload) => {
