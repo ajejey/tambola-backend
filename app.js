@@ -38,6 +38,7 @@ const ticketSchema = new mongoose.Schema({
 
 const userSchema = new mongoose.Schema({
     userName: String,
+    room: String,
     winStatus: { type: Boolean, default: false },
     score: { type: Number, default: 0 },
     scoreCategory: [{
@@ -215,6 +216,7 @@ io.on('connection', async (socket) => {
         const user = new User({
             userName: userName,
             scoreCategory: [],
+            room: room
         })
 
         // create a new categoryCard 
@@ -240,7 +242,7 @@ io.on('connection', async (socket) => {
         const { userName, room } = payload
 
         // check if user exists in the database
-        const user = await User.findOne({ userName: userName })
+        const user = await User.findOne({ userName: userName, room: room })
         if (!user) {
             io.to(room).emit('error', {
                 error: "User does not exist, please join a room"
@@ -388,7 +390,7 @@ io.on('connection', async (socket) => {
             await CategoryCard.findOneAndUpdate({ room: room }, { category: categoryCard.category })
 
             // Get the user and update the scoreCategory array 
-            const user = await User.findOne({ userName: userName })
+            const user = await User.findOne({ userName: userName, room: room })
             console.log("user ", user)
             if (user) {
                 user.scoreCategory.push(scoreCategory)
@@ -398,9 +400,11 @@ io.on('connection', async (socket) => {
                 }, 0);
                 console.log("score ", score)
                 // update score in user
-                await User.findOneAndUpdate({ userName: userName }, { scoreCategory: user.scoreCategory, score: score })
+                await User.findOneAndUpdate({ userName: userName, room: room }, { scoreCategory: user.scoreCategory, score: score })
                 console.log("user updated")
-                io.to(room).emit('category', { userName: userName, scoreCategory: user.scoreCategory, score: score, categoryCard: categoryCard })
+                // get all users
+                const allUsers = await User.find({ room: room })
+                io.to(room).emit('category', { userName: userName, scoreCategory: user.scoreCategory, score: score, categoryCard: categoryCard, allUsers: allUsers })
             } else {
                 console.log("user not found")
             }
