@@ -46,16 +46,61 @@ const userSchema = new mongoose.Schema({
     }]
 });
 
-
 const calledNumbersSchema = new mongoose.Schema({
     numbers: [Number],
     room: String,
 })
 
+const categoryCardSchema = new mongoose.Schema({
+    category: {
+        type: [
+            {
+                category: { type: String, required: true },
+                score: { type: Number, required: true },
+                claimed: { type: Boolean, default: false }
+            }
+        ],
+        default: [
+            { category: 'EARLY_FIVE', score: 40, claimed: false },
+            { category: 'EARLY_SEVEN', score: 30, claimed: false },
+            { category: 'MIDDLE_NUMBER', score: 30, claimed: false },
+            { category: 'FIRST_LINE', score: 20, claimed: false },
+            { category: 'MIDDLE_LINE', score: 20, claimed: false },
+            { category: 'LAST_LINE', score: 20, claimed: false },
+            { category: 'CORNERS_1', score: 50, claimed: false },
+            { category: 'STAR_1', score: 50, claimed: false },
+            { category: 'FULL_HOUSE_1', score: 100, claimed: false },
+            { category: 'CORNERS_2', score: 30, claimed: false },
+            { category: 'STAR_2', score: 30, claimed: false },
+            { category: 'FULL_HOUSE_2', score: 70, claimed: false }
+        ]
+    },
+    room: { type: String, required: true }
+});
+
 const Chat = mongoose.model('Chat', chatSchema);
 const Ticket = mongoose.model('Ticket', ticketSchema);
 const CalledNumbers = mongoose.model('CalledNumbers', calledNumbersSchema);
 const User = mongoose.model('User', userSchema);
+const CategoryCard = mongoose.model('CategoryCard', categoryCardSchema);
+
+let categoryCard = {
+    category: [
+        { category: 'EARLY_FIVE', score: 40, claimed: false },
+        { category: 'EARLY_SEVEN', score: 30, claimed: false },
+        { category: 'MIDDLE_NUMBER', score: 30, claimed: false },
+        { category: 'FIRST_LINE', score: 20, claimed: false },
+        { category: 'MIDDLE_LINE', score: 20, claimed: false },
+        { category: 'LAST_LINE', score: 20, claimed: false },
+        { category: 'CORNERS_1', score: 50, claimed: false },
+        { category: 'STAR_1', score: 50, claimed: false },
+        { category: 'FULL_HOUSE_1', score: 100, claimed: false },
+        { category: 'CORNERS_2', score: 30, claimed: false },
+        { category: 'STAR_2', score: 30, claimed: false },
+        { category: 'FULL_HOUSE_2', score: 70, claimed: false }
+    ],
+    room: ""
+}
 
 const scoreCategories = [
     { category: 'EARLY_FIVE', score: 40, description: 'First five numbers marked' },
@@ -154,23 +199,7 @@ function generateTambolaTicket() {
 //     console.log(rowString);
 // }
 
-const array = [
-    [4, 5, null],
-    [null, null, 18],
-    [24, 25, 29],
-    [null, null, 39],
-    [null, 47, null],
-    [null, null, 59],
-    [null, 63, null],
-    [74, null, 79],
-    [81, 84, 88]
-];
 
-const struckArray = array.map(row => row.map(element => {
-    return { value: element, struck: false };
-}));
-
-console.log(struckArray);
 
 
 io.on('connection', async (socket) => {
@@ -188,8 +217,14 @@ io.on('connection', async (socket) => {
             scoreCategory: [],
         })
 
+        // create a new categoryCard 
+        const categoryCard = new CategoryCard({
+            room: room
+        })
+
         try {
             await user.save();
+            await categoryCard.save();
         } catch (error) {
             console.log(error);
         }
@@ -318,12 +353,6 @@ io.on('connection', async (socket) => {
                     console.log("struck number exists, ", calledNumbers.numbers.includes(number))
                     const userTicket = await Ticket.findOne({ userName: userName, room: room })
                     if (userTicket) {
-                        // userTicket.numbers.forEach((item, index) => {
-                        //     if (item.value === number) {
-                        //         userTicket.numbers[index].struck = true;
-                        //     }
-                        // })
-
                         for (let i = 0; i < userTicket.numbers.length; i++) {
                             for (let j = 0; j < userTicket.numbers[i].length; j++) {
                                 if (userTicket.numbers[i][j].value === number) {
@@ -344,25 +373,37 @@ io.on('connection', async (socket) => {
 
     })
 
+
+
     socket.on('category', async (payload) => {
         const { userName, room, scoreCategory } = payload
         console.log("category payload ", payload)
-        // Get the user and update the scoreCategory array 
-        const user = await User.findOne({ userName: userName })
-        console.log("user ", user)
-        if (user) {
-            user.scoreCategory.push(scoreCategory)
-            // get all the scores in the scoreCategory array and add the score
-            let score = user.scoreCategory.reduce((accumulator, currentValue) => {
-                return accumulator + currentValue.score;
-            }, 0);
-            console.log("score ", score)
-            // update score in user
-            await User.findOneAndUpdate({ userName: userName }, { scoreCategory: user.scoreCategory, score: score })
-            console.log("user updated")
-            io.to(room).emit('category', { userName: userName, scoreCategory: user.scoreCategory, score: score })
-        } else {
-            console.log("user not found")
+
+        // get the categoryCard and update the category claim
+        const categoryCard = await CategoryCard.findOne({ room: room })
+        console.log("categoryCard ", categoryCard)
+        if (categoryCard) {
+            categoryCard.category.find((item) => item.category === scoreCategory.category).claimed = true
+            console.log("upadated categoryCard ", categoryCard)
+            await CategoryCard.findOneAndUpdate({ room: room }, { category: categoryCard.category })
+
+            // Get the user and update the scoreCategory array 
+            const user = await User.findOne({ userName: userName })
+            console.log("user ", user)
+            if (user) {
+                user.scoreCategory.push(scoreCategory)
+                // get all the scores in the scoreCategory array and add the score
+                let score = user.scoreCategory.reduce((accumulator, currentValue) => {
+                    return accumulator + currentValue.score;
+                }, 0);
+                console.log("score ", score)
+                // update score in user
+                await User.findOneAndUpdate({ userName: userName }, { scoreCategory: user.scoreCategory, score: score })
+                console.log("user updated")
+                io.to(room).emit('category', { userName: userName, scoreCategory: user.scoreCategory, score: score, categoryCard: categoryCard })
+            } else {
+                console.log("user not found")
+            }
         }
 
     })
