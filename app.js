@@ -38,7 +38,7 @@ const ticketSchema = new mongoose.Schema({
 });
 
 const userSchema = new mongoose.Schema({
-    userName: { type: String, required: true, unique: true },
+    userName: { type: String },
     room: String,
     winStatus: { type: Boolean, default: false },
     score: { type: Number, default: 0 },
@@ -271,6 +271,7 @@ io.on('connection', async (socket) => {
 
         // check if user already exists in the database
         const userInDB = await User.findOne({ userName: userName, room: room })
+        console.log("userInDB ", userInDB);
         if (!userInDB) {
             try {
                 const user = new User({
@@ -280,7 +281,7 @@ io.on('connection', async (socket) => {
                 })
                 await user.save();
             } catch (error) {
-                console.log(error);
+                console.log("error in saving the User", error.message);
                 io.to(room).emit('error', {
                     error: error.message
                 })
@@ -313,9 +314,11 @@ io.on('connection', async (socket) => {
 
     socket.on('getTicket', async (payload) => {
         const { userName, room } = payload
+        console.log("getTicket", userName, room)
 
         // check if user exists in the database
         const user = await User.findOne({ userName: userName, room: room })
+        console.log("user in get ticket ", user)
         if (!user) {
             io.to(room).emit('error', {
                 error: "User does not exist, please join a room"
