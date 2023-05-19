@@ -2,7 +2,8 @@ import React from 'react'
 import io from 'socket.io-client'
 import { nanoid } from 'nanoid'
 
-const socket = io("http://localhost:5000")
+// const socket = io("http://localhost:5000")
+const socket = io("https://tambola-backend-production.up.railway.app/")
 const userName = nanoid(4)
 const room1 = nanoid(6)
 const scoreCategories = [
