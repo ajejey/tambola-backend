@@ -38,7 +38,7 @@ const ticketSchema = new mongoose.Schema({
 });
 
 const userSchema = new mongoose.Schema({
-    userName: String,
+    userName: { type: String, required: true, unique: true },
     room: String,
     winStatus: { type: Boolean, default: false },
     score: { type: Number, default: 0 },
@@ -281,6 +281,9 @@ io.on('connection', async (socket) => {
                 await user.save();
             } catch (error) {
                 console.log(error);
+                io.to(room).emit('error', {
+                    error: error.message
+                })
             }
             // create a new user with userName
 
@@ -369,6 +372,8 @@ io.on('connection', async (socket) => {
 
     })
 
+    let intervalId;
+
     socket.on('callNumbers', async (payload) => {
         const { userName, room, timeInterval } = payload
         console.log("room in callNumbers", room)
@@ -376,7 +381,7 @@ io.on('connection', async (socket) => {
         let calledNumbers = [];
 
         // Emit random numbers from 1 to 90 to the user in 1 second intervals, stopping after 90 numbers have been called
-        const intervalId = setInterval(async () => {
+        intervalId = setInterval(async () => {
             let randomNumber;
 
             // Generate a random number that hasn't already been called
@@ -412,6 +417,11 @@ io.on('connection', async (socket) => {
             }
         }, timeInterval || 500);
     });
+
+    socket.on('stopCall', async (payload) => {
+        const { room } = payload
+        clearInterval(intervalId)
+    })
 
     socket.on('struckNumber', async (payload) => {
         const { number, userName, room } = payload
