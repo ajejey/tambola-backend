@@ -269,23 +269,36 @@ io.on('connection', async (socket) => {
         console.log("joined room ", room)
         socket.join(room)
 
-        // create a new user with userName
-        const user = new User({
-            userName: userName,
-            scoreCategory: [],
-            room: room
-        })
+        // check if user already exists in the database
+        const userInDB = await User.findOne({ userName: userName, room: room })
+        if (!userInDB) {
+            try {
+                const user = new User({
+                    userName: userName,
+                    scoreCategory: [],
+                    room: room
+                })
+                await user.save();
+            } catch (error) {
+                console.log(error);
+            }
+            // create a new user with userName
 
-        // create a new categoryCard 
-        const categoryCard = new CategoryCard({
-            room: room
-        })
+        }
 
-        try {
-            await user.save();
-            await categoryCard.save();
-        } catch (error) {
-            console.log(error);
+        // check if categoryCard already exists in Database
+        const categoryCardInDB = await CategoryCard.findOne({ room: room })
+        if (!categoryCardInDB) {
+            try {
+                // create a new categoryCard 
+                const categoryCard = new CategoryCard({
+                    room: room
+                })
+                await categoryCard.save();
+            } catch (error) {
+                console.log(error);
+            }
+
         }
 
         io.to(room).emit('join', {
