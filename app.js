@@ -259,7 +259,6 @@ function generateTambolaTicket() {
 
 
 
-
 io.on('connection', async (socket) => {
     console.log('a user connected ', socket.id);
 
@@ -468,29 +467,34 @@ io.on('connection', async (socket) => {
         const categoryCard = await CategoryCard.findOne({ room: room })
         console.log("categoryCard ", categoryCard)
         if (categoryCard) {
-            categoryCard.category.find((item) => item.category === scoreCategory.category).claimed = true
-            console.log("upadated categoryCard ", categoryCard)
-            await CategoryCard.findOneAndUpdate({ room: room }, { category: categoryCard.category })
+            if (categoryCard.category.find((item) => item.category === scoreCategory.category).claimed === true) {
+                categoryCard.category.find((item) => item.category === scoreCategory.category).claimed = true
+                console.log("upadated categoryCard ", categoryCard)
+                await CategoryCard.findOneAndUpdate({ room: room }, { category: categoryCard.category })
 
-            // Get the user and update the scoreCategory array 
-            const user = await User.findOne({ userName: userName, room: room })
-            console.log("user ", user)
-            if (user) {
-                user.scoreCategory.push(scoreCategory)
-                // get all the scores in the scoreCategory array and add the score
-                let score = user.scoreCategory.reduce((accumulator, currentValue) => {
-                    return accumulator + currentValue.score;
-                }, 0);
-                console.log("score ", score)
-                // update score in user
-                await User.findOneAndUpdate({ userName: userName, room: room }, { scoreCategory: user.scoreCategory, score: score })
-                console.log("user updated")
-                // get all users
-                const allUsers = await User.find({ room: room })
-                io.to(room).emit('category', { userName: userName, scoreCategory: user.scoreCategory, score: score, categoryCard: categoryCard, allUsers: allUsers })
-            } else {
-                console.log("user not found")
+                // Get the user and update the scoreCategory array 
+                const user = await User.findOne({ userName: userName, room: room })
+                console.log("user ", user)
+                if (user) {
+                    if (!user.scoreCategory.includes(scoreCategory)) {
+                        user.scoreCategory.push(scoreCategory)
+                        // get all the scores in the scoreCategory array and add the score
+                        let score = user.scoreCategory.reduce((accumulator, currentValue) => {
+                            return accumulator + currentValue.score;
+                        }, 0);
+                        console.log("score ", score)
+                        // update score in user
+                        await User.findOneAndUpdate({ userName: userName, room: room }, { scoreCategory: user.scoreCategory, score: score })
+                        console.log("user updated")
+                        // get all users
+                        const allUsers = await User.find({ room: room })
+                        io.to(room).emit('category', { userName: userName, scoreCategory: user.scoreCategory, score: score, categoryCard: categoryCard, allUsers: allUsers })
+                    }
+                } else {
+                    console.log("user not found")
+                }
             }
+
         }
 
     })
