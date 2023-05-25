@@ -467,7 +467,7 @@ io.on('connection', async (socket) => {
         const categoryCard = await CategoryCard.findOne({ room: room })
         console.log("categoryCard ", categoryCard)
         if (categoryCard) {
-            if (categoryCard.category.find((item) => item.category === scoreCategory.category).claimed === true) {
+            if (categoryCard.category.find((item) => item.category === scoreCategory.category).claimed === false) {
                 categoryCard.category.find((item) => item.category === scoreCategory.category).claimed = true
                 console.log("upadated categoryCard ", categoryCard)
                 await CategoryCard.findOneAndUpdate({ room: room }, { category: categoryCard.category })
