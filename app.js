@@ -347,10 +347,14 @@ io.on('connection', async (socket) => {
                     const allUserNames = tickets.map((ticket) => ticket.userName)
                     console.log("allUserNames ", allUserNames)
 
+                    // get all users
+                    const allUsers = await User.find({ room: room })
+                    console.log("allUsers ", allUsers)
+
                     io.to(room).emit('private', {
                         userName: userName,
                         numbers: randomNumbers,
-                        allUserNames: allUserNames
+                        allUsers: allUsers
                     });
                 } catch (error) {
                     console.log("erron in saving ticket ", error)
@@ -365,6 +369,7 @@ io.on('connection', async (socket) => {
 
                 // get all users
                 const allUsers = await User.find({ room: room })
+                console.log("allUsers ", allUsers)
 
                 io.to(room).emit('private', {
                     userName: userName,
