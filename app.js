@@ -363,10 +363,13 @@ io.on('connection', async (socket) => {
                 const allUserNames = tickets.map((ticket) => ticket.userName)
                 console.log("allUserNames ", allUserNames)
 
+                // get all users
+                const allUsers = await User.find({ room: room })
+
                 io.to(room).emit('private', {
                     userName: userName,
                     numbers: ticket.numbers.map(row => row.map(obj => obj.value)),
-                    allUserNames: allUserNames
+                    allUsers: allUsers
                 });
             }
         }
