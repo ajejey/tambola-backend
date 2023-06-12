@@ -381,57 +381,63 @@ io.on('connection', async (socket) => {
 
 
     })
-
     let intervalId;
+    const roomStates = {};
 
     socket.on('callNumbers', async (payload) => {
-        const { userName, room, timeInterval } = payload
-        console.log("room in callNumbers", room)
-        // Create an array to store the numbers that have already been called
+        const { userName, room, timeInterval } = payload;
+        console.log("room in callNumbers", room);
         let calledNumbers = [];
 
-        // Emit random numbers from 1 to 90 to the user in 1 second intervals, stopping after 90 numbers have been called
         intervalId = setInterval(async () => {
+            if (roomStates[room] && roomStates[room].isPaused) {
+                return; // Skip emitting numbers if paused for this room
+            }
+
             let randomNumber;
 
-            // Generate a random number that hasn't already been called
             do {
                 randomNumber = Math.floor(Math.random() * 90) + 1;
             } while (calledNumbers.includes(randomNumber));
 
-            // Add the number to the called numbers array
             calledNumbers.push(randomNumber);
-            console.log("randomNumber ", randomNumber)
+            console.log("randomNumber ", randomNumber);
 
-            const calledNumbersInDB = await CalledNumbers.findOne({ room: room })
+            const calledNumbersInDB = await CalledNumbers.findOne({ room: room });
             if (calledNumbersInDB) {
-                // update the array numbers in calledNumbers
-                calledNumbersInDB.numbers.push(randomNumber)
-                console.log("calledNumbers ", calledNumbersInDB)
-                await CalledNumbers.findOneAndUpdate({ room: room }, { numbers: calledNumbersInDB.numbers })
+                calledNumbersInDB.numbers.push(randomNumber);
+                console.log("calledNumbers ", calledNumbersInDB);
+                await CalledNumbers.findOneAndUpdate({ room: room }, { numbers: calledNumbersInDB.numbers });
             } else {
                 const newCalledNumbers = new CalledNumbers({
                     numbers: [randomNumber],
                     room: room
-                })
+                });
                 await newCalledNumbers.save();
             }
 
-
-            // Emit the number to the user
             io.to(room).emit('calledNumber', calledNumbers);
 
-            // Stop emitting numbers after 90 have been called
             if (calledNumbers.length >= 90) {
                 clearInterval(intervalId);
             }
         }, timeInterval || 500);
     });
 
-    socket.on('stopCall', async (payload) => {
-        const { room } = payload
-        clearInterval(intervalId)
-    })
+    socket.on('stopCall', () => {
+        clearInterval(intervalId);
+        delete roomStates[room];
+    });
+
+    socket.on('pauseCall', (payload) => {
+        const { room } = payload;
+        roomStates[room] = { isPaused: true };
+    });
+
+    socket.on('resumeCall', (payload) => {
+        const { room } = payload;
+        roomStates[room] = { isPaused: false };
+    });
 
     socket.on('struckNumber', async (payload) => {
         const { number, userName, room } = payload
