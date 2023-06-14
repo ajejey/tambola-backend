@@ -63,18 +63,18 @@ const categoryCardSchema = new mongoose.Schema({
             }
         ],
         default: [
-            { category: 'EARLY_FIVE', score: 40, claimed: false },
-            { category: 'EARLY_SEVEN', score: 30, claimed: false },
-            { category: 'MIDDLE_NUMBER', score: 30, claimed: false },
-            { category: 'FIRST_LINE', score: 20, claimed: false },
-            { category: 'MIDDLE_LINE', score: 20, claimed: false },
-            { category: 'LAST_LINE', score: 20, claimed: false },
-            { category: 'CORNERS_1', score: 50, claimed: false },
-            { category: 'STAR_1', score: 50, claimed: false },
-            { category: 'FULL_HOUSE_1', score: 100, claimed: false },
-            { category: 'CORNERS_2', score: 30, claimed: false },
-            { category: 'STAR_2', score: 30, claimed: false },
-            { category: 'FULL_HOUSE_2', score: 70, claimed: false }
+            { category: 'EARLY_FIVE', score: 200, claimed: false },
+            { category: 'EARLY_SEVEN', score: 200, claimed: false },
+            { category: 'MIDDLE_NUMBER', score: 200, claimed: false },
+            { category: 'FIRST_LINE', score: 200, claimed: false },
+            { category: 'MIDDLE_LINE', score: 200, claimed: false },
+            { category: 'LAST_LINE', score: 200, claimed: false },
+            { category: 'CORNERS_1', score: 200, claimed: false },
+            { category: 'STAR_1', score: 200, claimed: false },
+            { category: 'FULL_HOUSE_1', score: 500, claimed: false },
+            { category: 'CORNERS_2', score: 200, claimed: false },
+            { category: 'STAR_2', score: 200, claimed: false },
+            { category: 'FULL_HOUSE_2', score: 500, claimed: false }
         ]
     },
     room: { type: String, required: true }
@@ -386,7 +386,7 @@ io.on('connection', async (socket) => {
 
     })
     let intervalId;
-    
+
     socket.on('callNumbers', async (payload) => {
         const { userName, room, timeInterval } = payload;
         console.log("room in callNumbers", room);
