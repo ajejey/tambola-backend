@@ -259,6 +259,8 @@ function generateTambolaTicket() {
 
 
 
+let roomStates = {};
+
 io.on('connection', async (socket) => {
     console.log('a user connected ', socket.id);
 
@@ -384,8 +386,7 @@ io.on('connection', async (socket) => {
 
     })
     let intervalId;
-    const roomStates = {};
-
+    
     socket.on('callNumbers', async (payload) => {
         const { userName, room, timeInterval } = payload;
         console.log("room in callNumbers", room);
