@@ -360,12 +360,14 @@ io.on('connection', async (socket) => {
                     console.log("erron in saving ticket ", error)
                 }
             } else {
-                // get all tickets in the room
-                const tickets = await Ticket.find({ room: room })
+                // // get all tickets in the room
+                // const tickets = await Ticket.find({ room: room })
 
-                // get all the userNames in tickets and put in an array
-                const allUserNames = tickets.map((ticket) => ticket.userName)
-                console.log("allUserNames ", allUserNames)
+                // // get all the userNames in tickets and put in an array
+                // const allUserNames = tickets.map((ticket) => ticket.userName)
+                // console.log("allUserNames ", allUserNames)
+                // get ticket based on userName
+                const ticket = await Ticket.findOne({ userName: userName, room: room })
 
                 // get all users
                 const allUsers = await User.find({ room: room })
