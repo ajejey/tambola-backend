@@ -63,18 +63,18 @@ const categoryCardSchema = new mongoose.Schema({
             }
         ],
         default: [
-            { category: 'EARLY_FIVE', score: 40, claimed: false },
-            { category: 'EARLY_SEVEN', score: 30, claimed: false },
-            { category: 'MIDDLE_NUMBER', score: 30, claimed: false },
-            { category: 'FIRST_LINE', score: 20, claimed: false },
-            { category: 'MIDDLE_LINE', score: 20, claimed: false },
-            { category: 'LAST_LINE', score: 20, claimed: false },
-            { category: 'CORNERS_1', score: 50, claimed: false },
-            { category: 'STAR_1', score: 50, claimed: false },
-            { category: 'FULL_HOUSE_1', score: 100, claimed: false },
-            { category: 'CORNERS_2', score: 30, claimed: false },
-            { category: 'STAR_2', score: 30, claimed: false },
-            { category: 'FULL_HOUSE_2', score: 70, claimed: false }
+            { category: 'EARLY_FIVE', score: 200, claimed: false },
+            { category: 'EARLY_SEVEN', score: 200, claimed: false },
+            { category: 'MIDDLE_NUMBER', score: 200, claimed: false },
+            { category: 'FIRST_LINE', score: 200, claimed: false },
+            { category: 'MIDDLE_LINE', score: 200, claimed: false },
+            { category: 'LAST_LINE', score: 200, claimed: false },
+            { category: 'CORNERS_1', score: 200, claimed: false },
+            { category: 'STAR_1', score: 200, claimed: false },
+            { category: 'FULL_HOUSE_1', score: 500, claimed: false },
+            { category: 'CORNERS_2', score: 200, claimed: false },
+            { category: 'STAR_2', score: 200, claimed: false },
+            { category: 'FULL_HOUSE_2', score: 500, claimed: false }
         ]
     },
     room: { type: String, required: true }
@@ -363,12 +363,14 @@ io.on('connection', async (socket) => {
                     console.log("erron in saving ticket ", error)
                 }
             } else {
-                // get all tickets in the room
-                const tickets = await Ticket.find({ room: room })
+                // // get all tickets in the room
+                // const tickets = await Ticket.find({ room: room })
 
-                // get all the userNames in tickets and put in an array
-                const allUserNames = tickets.map((ticket) => ticket.userName)
-                console.log("allUserNames ", allUserNames)
+                // // get all the userNames in tickets and put in an array
+                // const allUserNames = tickets.map((ticket) => ticket.userName)
+                // console.log("allUserNames ", allUserNames)
+                // get ticket based on userName
+                const ticket = await Ticket.findOne({ userName: userName, room: room })
 
                 // get all users
                 const allUsers = await User.find({ room: room })
@@ -385,7 +387,7 @@ io.on('connection', async (socket) => {
 
     })
     let intervalId;
-    
+
     socket.on('callNumbers', async (payload) => {
         const { userName, room, timeInterval } = payload;
         console.log("room in callNumbers", room);
