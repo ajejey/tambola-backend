@@ -308,7 +308,8 @@ io.on('connection', async (socket) => {
 
         io.to(room).emit('join', {
             userName: userName,
-            room: room
+            room: room,
+            joined: true
         });
 
     })
