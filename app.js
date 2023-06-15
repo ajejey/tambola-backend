@@ -321,56 +321,34 @@ io.on('connection', async (socket) => {
         // check if user exists in the database
         const user = await User.findOne({ userName: userName, room: room })
         console.log("user in get ticket ", user)
-        if (!user) {
-            io.to(room).emit('error', {
-                error: "User does not exist, please join a room"
+        // if (!user) {
+        //     io.to(room).emit('error', {
+        //         error: "User does not exist, please join a room"
+        //     })
+        // } else {
+        // check if a ticket exists with the userName and room in the database
+        const ticket = await Ticket.findOne({ userName: userName, room: room })
+        if (!ticket) {
+            let randomNumbers = generateTambolaTicket();
+
+            // save numbers along with userName to the database
+            const ticket = new Ticket({
+                userName: userName,
+                numbers: randomNumbers.map(row => row.map(element => {
+                    return { value: element, struck: false };
+                })),
+                room: room
             })
-        } else {
-            // check if a ticket exists with the userName and room in the database
-            const ticket = await Ticket.findOne({ userName: userName, room: room })
-            if (!ticket) {
-                let randomNumbers = generateTambolaTicket();
 
-                // save numbers along with userName to the database
-                const ticket = new Ticket({
-                    userName: userName,
-                    numbers: randomNumbers.map(row => row.map(element => {
-                        return { value: element, struck: false };
-                    })),
-                    room: room
-                })
+            try {
+                await ticket.save();
 
-                try {
-                    await ticket.save();
+                // get all tickets in the room
+                const tickets = await Ticket.find({ room: room })
 
-                    // get all tickets in the room
-                    const tickets = await Ticket.find({ room: room })
-
-                    // get all the userNames in tickets and put in an array
-                    const allUserNames = tickets.map((ticket) => ticket.userName)
-                    console.log("allUserNames ", allUserNames)
-
-                    // get all users
-                    const allUsers = await User.find({ room: room })
-                    console.log("allUsers ", allUsers)
-
-                    io.to(room).emit('private', {
-                        userName: userName,
-                        numbers: randomNumbers,
-                        allUsers: allUsers
-                    });
-                } catch (error) {
-                    console.log("erron in saving ticket ", error)
-                }
-            } else {
-                // // get all tickets in the room
-                // const tickets = await Ticket.find({ room: room })
-
-                // // get all the userNames in tickets and put in an array
-                // const allUserNames = tickets.map((ticket) => ticket.userName)
-                // console.log("allUserNames ", allUserNames)
-                // get ticket based on userName
-                const ticket = await Ticket.findOne({ userName: userName, room: room })
+                // get all the userNames in tickets and put in an array
+                const allUserNames = tickets.map((ticket) => ticket.userName)
+                console.log("allUserNames ", allUserNames)
 
                 // get all users
                 const allUsers = await User.find({ room: room })
@@ -378,11 +356,33 @@ io.on('connection', async (socket) => {
 
                 io.to(room).emit('private', {
                     userName: userName,
-                    numbers: ticket.numbers.map(row => row.map(obj => obj.value)),
+                    numbers: randomNumbers,
                     allUsers: allUsers
                 });
+            } catch (error) {
+                console.log("erron in saving ticket ", error)
             }
+        } else {
+            // // get all tickets in the room
+            // const tickets = await Ticket.find({ room: room })
+
+            // // get all the userNames in tickets and put in an array
+            // const allUserNames = tickets.map((ticket) => ticket.userName)
+            // console.log("allUserNames ", allUserNames)
+            // get ticket based on userName
+            const ticket = await Ticket.findOne({ userName: userName, room: room })
+
+            // get all users
+            const allUsers = await User.find({ room: room })
+            console.log("allUsers ", allUsers)
+
+            io.to(room).emit('private', {
+                userName: userName,
+                numbers: ticket.numbers.map(row => row.map(obj => obj.value)),
+                allUsers: allUsers
+            });
         }
+        // }
 
 
     })
