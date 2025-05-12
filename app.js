@@ -189,7 +189,7 @@ function generateTambolaTicket() {
 
 
 io.on('connection', (socket) => {
-    console.log('A user connected');
+    // console.log('A user connected');
 
     socket.on('join', async (payload) => {
         const { userName, room, isHost } = payload;
@@ -218,7 +218,7 @@ io.on('connection', (socket) => {
             }
             
             // If this is the first user to join and no host is set, make them the host
-            if (!roomStates[room].host && roomStates[room].users.length === 0) {
+            if (roomStates[room] && !roomStates[room].host && roomStates[room].users && roomStates[room].users.length === 0) {
                 console.log(`Setting first user ${userName} as host for room ${room}`);
                 roomStates[room].host = userName;
             }
@@ -367,18 +367,25 @@ io.on('connection', (socket) => {
             let randomNumber;
             do {
                 randomNumber = Math.floor(Math.random() * 90) + 1;
-            } while (roomStates[room].calledNumbers.includes(randomNumber));
+            } while (roomStates[room] && roomStates[room].calledNumbers && roomStates[room].calledNumbers.includes(randomNumber));
 
             try {
                 // Add the random number to the called numbers
-                roomStates[room].calledNumbers.push(randomNumber);
+                if (roomStates[room] && roomStates[room].calledNumbers) {
+                    roomStates[room].calledNumbers.push(randomNumber);
+                } else if (roomStates[room]) {
+                    roomStates[room].calledNumbers = [randomNumber];
+                } else {
+                    console.error(`Room ${room} does not exist`);
+                    return;
+                }
                 console.log("Called number:", randomNumber);
 
                 // Emit the updated called numbers to all users in the room
                 io.to(room).emit('calledNumber', roomStates[room].calledNumbers);
                 
                 // Stop calling numbers if all 90 numbers have been called
-                if (roomStates[room].calledNumbers.length >= 90) {
+                if (roomStates[room] && roomStates[room].calledNumbers && roomStates[room].calledNumbers.length >= 90) {
                     clearInterval(intervalId);
                 }
             } catch (error) {
