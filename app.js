@@ -1,563 +1,473 @@
-require('dotenv').config();
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const cors = require('cors');
+const crypto = require('crypto');
+
 const app = express();
-var tambola = require('tambola-generator');
+app.use(cors());
 
-const server = require('http').createServer(app);
-
-const io = require('socket.io')(server, {
-    cors: {
-        origin: '*',
-    }
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+  },
 });
 
+const rooms = {};
 
-// mongoDB connection
-const MONGODB_URI = process.env.MONGODB_URI
-const mongoose = require('mongoose');
-mongoose.connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
+// Helper for structured logging
+const log = (level, message, data = '') => {
+  console.log(`[${new Date().toISOString()}] [${level.toUpperCase()}] ${message}`, data);
+};
 
-const chatSchema = new mongoose.Schema({
-    userName: String,
-    message: String,
-    room: String,
-    messageDate: { type: Date, default: Date.now }
-})
-
-const ticketSchema = new mongoose.Schema({
-    numbers: [[{
-        value: Number,
-        struck: { type: Boolean, default: false }
-    }]],
-    userName: String,
-    room: String,
-    ticketDate: { type: Date, default: Date.now }
-});
-
-const userSchema = new mongoose.Schema({
-    userName: { type: String },
-    room: String,
-    winStatus: { type: Boolean, default: false },
-    score: { type: Number, default: 0 },
-    scoreCategory: [{
-        category: { type: String },
-        score: { type: Number }
-    }]
-});
-
-const calledNumbersSchema = new mongoose.Schema({
-    numbers: [Number],
-    room: String,
-})
-
-const categoryCardSchema = new mongoose.Schema({
-    category: {
-        type: [
-            {
-                category: { type: String, required: true },
-                score: { type: Number, required: true },
-                claimed: { type: Boolean, default: false }
-            }
-        ],
-        default: [
-            { category: 'EARLY_FIVE', score: 200, claimed: false },
-            { category: 'EARLY_SEVEN', score: 200, claimed: false },
-            { category: 'MIDDLE_NUMBER', score: 200, claimed: false },
-            { category: 'FIRST_LINE', score: 200, claimed: false },
-            { category: 'MIDDLE_LINE', score: 200, claimed: false },
-            { category: 'LAST_LINE', score: 200, claimed: false },
-            { category: 'CORNERS_1', score: 200, claimed: false },
-            { category: 'STAR_1', score: 200, claimed: false },
-            { category: 'FULL_HOUSE_1', score: 500, claimed: false },
-            { category: 'CORNERS_2', score: 200, claimed: false },
-            { category: 'STAR_2', score: 200, claimed: false },
-            { category: 'FULL_HOUSE_2', score: 500, claimed: false }
-        ]
-    },
-    room: { type: String, required: true }
-});
-
-const Chat = mongoose.model('Chat', chatSchema);
-const Ticket = mongoose.model('Ticket', ticketSchema);
-const CalledNumbers = mongoose.model('CalledNumbers', calledNumbersSchema);
-const User = mongoose.model('User', userSchema);
-const CategoryCard = mongoose.model('CategoryCard', categoryCardSchema);
-
-let categoryCard = {
-    category: [
-        { category: 'EARLY_FIVE', score: 40, claimed: false },
-        { category: 'EARLY_SEVEN', score: 30, claimed: false },
-        { category: 'MIDDLE_NUMBER', score: 30, claimed: false },
-        { category: 'FIRST_LINE', score: 20, claimed: false },
-        { category: 'MIDDLE_LINE', score: 20, claimed: false },
-        { category: 'LAST_LINE', score: 20, claimed: false },
-        { category: 'CORNERS_1', score: 50, claimed: false },
-        { category: 'STAR_1', score: 50, claimed: false },
-        { category: 'FULL_HOUSE_1', score: 100, claimed: false },
-        { category: 'CORNERS_2', score: 30, claimed: false },
-        { category: 'STAR_2', score: 30, claimed: false },
-        { category: 'FULL_HOUSE_2', score: 70, claimed: false }
-    ],
-    room: ""
+// Initialize the automated house room
+function initializeHouseRoom() {
+    const roomName = 'house';
+    rooms[roomName] = {
+        players: {},
+        board: Array(90).fill(false),
+        numbersCalled: [],
+        host: 'system',
+        prizes: {},
+        gameStarted: false,
+        config: {
+            claims: ['Early Five', 'Top Row', 'Middle Row', 'Bottom Row', 'All Corners', 'Full House'],
+            callingInterval: 5000, // 5 seconds
+            autoCalling: true,
+        },
+        autoCallTimer: null,
+    };
+    log('info', 'Automated house room initialized');
+    io.emit('updateHouseRoomState', getGameStateForClient(rooms[roomName]));
 }
 
-const scoreCategories = [
-    { category: 'EARLY_FIVE', score: 40, description: 'First five numbers marked' },
-    { category: 'EARLY_SEVEN', score: 30, description: 'First seven numbers marked' },
-    { category: 'MIDDLE_NUMBER', score: 30, description: 'Middle number marked' },
-    { category: 'FIRST_LINE', score: 20, description: 'First line completed' },
-    { category: 'MIDDLE_LINE', score: 20, description: 'Middle line completed' },
-    { category: 'LAST_LINE', score: 20, description: 'Last line completed' },
-    { category: 'CORNERS_1', score: 50, description: 'First set of corner numbers marked' },
-    { category: 'STAR_1', score: 50, description: 'Star pattern completed (Set 1)' },
-    { category: 'FULL_HOUSE_1', score: 100, description: 'Full house completed (Set 1)' },
-    { category: 'CORNERS_2', score: 30, description: 'Second set of corner numbers marked' },
-    { category: 'STAR_2', score: 30, description: 'Star pattern completed (Set 2)' },
-    { category: 'FULL_HOUSE_2', score: 70, description: 'Full house completed (Set 2)' }
-]
+initializeHouseRoom();
 
-// Function to generate a random number within a given range
-function getRandomNumber(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+// Automated game management for the house room
+setInterval(() => {
+    const roomName = 'house';
+    const room = rooms[roomName];
+    if (!room) return;
+
+    const now = new Date();
+    const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
+
+    // Start a new game every 30 minutes
+    if (minutes % 30 === 0 && seconds === 0) {
+        if (room.gameStarted) {
+            log('info', `[Room: ${roomName}] Game ended and reset automatically.`);
+            io.to(roomName).emit('gameOver');
+            clearTimeout(room.autoCallTimer);
+            initializeHouseRoom(); // Reset the room
+        }
+
+        log('info', `[Room: ${roomName}] New game started automatically.`);
+        room.gameStarted = true;
+        io.to(roomName).emit('gameStarted');
+        startAutoCalling(roomName);
+        io.to(roomName).emit('updateGameState', getGameStateForClient(room));
+    }
+}, 1000);
+
+const PRIZE_SCORES = {
+  'Early Five': 100,
+  'Top Row': 200,
+  'Middle Row': 200,
+  'Bottom Row': 200,
+  'All Corners': 300,
+  'Full House': 500,
+};
+
+function generateRoomCode() {
+  let code;
+  do {
+    code = crypto.randomBytes(3).toString('hex').toUpperCase();
+  } while (rooms[code]);
+  return code;
 }
 
-// Function to generate a Tambola ticket
-function generateTambolaTicket() {
-    const ticket = [];
-
-    // Generate numbers for each column
-    for (let column = 1; column <= 9; column++) {
-        const columnNumbers = [];
-        let minRange = (column - 1) * 10 + 1;
-        let maxRange = column == 9 ? (column * 10) : (column * 10) - 1;
-
-        // Generate numbers for each row in the column
-        for (let row = 0; row < 3; row++) {
-            let number = getRandomNumber(minRange, maxRange);
-
-            // Check if the generated number is already present in the column
-            while (columnNumbers.includes(number)) {
-                number = getRandomNumber(minRange, maxRange);
-            }
-
-            columnNumbers.push(number);
-        }
-
-        ticket.push(columnNumbers);
-    }
-
-    // console.log("original Ticket ", ticket)
-
-    ticket.forEach((item) => {
-        item.sort((a, b) => a - b);
-    })
-
-    function transposeArray(array) {
-        return array[0].map((_, columnIndex) => array.map(row => row[columnIndex]));
-    }
-
-    let transposedArray = transposeArray(ticket);
-    // console.log("transposedArray 1", transposedArray);
-
-    let nullSpots = [
-        [[0, 3, 7, 8], [1, 4, 6, 8], [0, 1, 4, 5]],
-        [[1, 2, 3, 7], [0, 4, 6, 8], [1, 2, 5, 6]],
-        [[1, 2, 5, 7], [0, 3, 6, 8], [2, 4, 5, 6]],
-        [[1, 2, 5, 6], [0, 3, 7, 8], [1, 4, 6, 8]],
-        [[0, 2, 5, 7], [1, 3, 6, 8], [0, 4, 5, 6]],
-        [[0, 4, 5, 8], [3, 6, 7, 8], [2, 5, 6, 7]],
-        [[0, 2, 4, 7], [1, 3, 4, 6], [0, 1, 3, 5]],
-        [[0, 2, 4, 7], [1, 3, 6, 8], [0, 4, 5, 6]],
-        [[2, 3, 4, 6], [1, 2, 5, 6], [0, 1, 3, 4]],
-        [[1, 2, 3, 4], [0, 1, 4, 7], [0, 2, 3, 5]],
-        [[0, 1, 4, 8], [2, 3, 4, 6], [0, 2, 3, 5]],
-        [[0, 1, 7, 8], [3, 4, 5, 7], [0, 2, 4, 5]],
-    ]
-
-    // pick a random nullSpots array
-    let randomNo = Math.floor(Math.random() * nullSpots.length)
-    console.log("nulspots index chosen", randomNo);
-    for (let i = 0; i < transposedArray.length; i++) {
-        let randomNullSpot = nullSpots[randomNo];
-        transposedArray[i][randomNullSpot[i][0]] = null;
-        transposedArray[i][randomNullSpot[i][1]] = null;
-        transposedArray[i][randomNullSpot[i][2]] = null;
-        transposedArray[i][randomNullSpot[i][3]] = null;
-
-    }
-
-    // console.log("transposedArray 2", transposedArray);
-    let transposedBackArray = transposeArray(transposedArray);
-
-
-    function displayTicket(array) {
-        let output = '';
-        for (let i = 0; i < array.length; i++) {
-            for (let j = 0; j < array[i].length; j++) {
-                const value = array[i][j];
-                const formattedValue = value !== null ? value.toString().padStart(2, '0') : '  ';
-                output += formattedValue + ' ';
-            }
-            output += '\n';
-        }
-        return output;
-    }
-
-    let ticket1 = displayTicket(transposedBackArray);
-    console.log(ticket1);
-
-    // // Count the total number of nulls in myArray
-    // function countTotalNulls(arr) {
-    //     let totalNulls = 0;
-    //     for (let i = 0; i < arr.length; i++) {
-    //         totalNulls += arr[i].filter((element) => element === null).length;
-    //     }
-    //     return totalNulls;
-    // }
-
-    // // Iterate until the total number of nulls is exactly 12
-    // while (countTotalNulls(ticket) < 12) {
-    //     let randomRowIndex = getRandomNumber(0, ticket.length - 1);
-    //     let nullCount = ticket[randomRowIndex].filter((element) => element === null).length;
-    //     if (nullCount < 2) {
-    //         let randomColIndex = getRandomNumber(0, ticket[randomRowIndex].length - 1);
-    //         if (ticket[randomRowIndex][randomColIndex] !== null) {
-    //             ticket[randomRowIndex][randomColIndex] = null;
-    //         }
-    //     }
-    // }
-
-
-
-    // console.log(ticket);
-
-
-    return transposedBackArray;
+function getGameStateForClient(room) {
+  if (!room) return null;
+  const playersForClient = {};
+  for (const playerId in room.players) {
+    const { socketId, ...playerWithoutSocketId } = room.players[playerId];
+    playersForClient[playerId] = playerWithoutSocketId;
+  }
+  const { autoCallTimer, ...roomStateForClient } = room;
+  roomStateForClient.players = playersForClient;
+  return roomStateForClient;
 }
 
+io.on('connection', (socket) => {
+  log('info', `User connected: ${socket.id}`);
 
-// let tambolaTicket = generateTambolaTicket();
+  socket.on('getHouseRoomState', () => {
+    log('info', `[Socket: ${socket.id}] Requested house room state.`);
+    socket.emit('updateHouseRoomState', getGameStateForClient(rooms['house']));
+  });
 
+  socket.on('createRoom', ({ config, ticket, playerConfig }, callback) => {
+    const roomName = generateRoomCode();
+    const newPlayerId = `${Date.now()}-${Math.random()}`;
+    rooms[roomName] = {
+      players: {},
+      board: Array(90).fill(false),
+      numbersCalled: [],
+      host: newPlayerId,
+      prizes: {},
+      gameStarted: false,
+      config: config,
+      autoCallTimer: null,
+    };
+    rooms[roomName].players[newPlayerId] = {
+      ticket: ticket,
+      name: 'Host',
+      id: newPlayerId,
+      socketId: socket.id,
+      score: 0,
+      config: playerConfig,
+    };
+    socket.join(roomName);
+    callback({ success: true, roomName, playerId: newPlayerId });
+    io.to(roomName).emit('updateGameState', getGameStateForClient(rooms[roomName]));
+    log('info', `[Room: ${roomName}] Room created by host ${newPlayerId}.`, { config });
+  });
 
+  socket.on('joinRoom', (roomName, playerName, ticket, playerConfig, callback) => {
+    const room = rooms[roomName];
+    if (!room) {
+      log('warn', `[Socket: ${socket.id}] Join failed: Room ${roomName} does not exist.`);
+      return callback({ error: 'Room does not exist' });
+    }
+    if (room.gameStarted) {
+      log('warn', `[Socket: ${socket.id}] Join failed: Game in room ${roomName} has already started.`);
+      return callback({ error: 'Game has already started' });
+    }
+    const newPlayerId = `${Date.now()}-${Math.random()}`;
+    room.players[newPlayerId] = {
+      ticket: ticket,
+      name: playerName,
+      id: newPlayerId,
+      socketId: socket.id,
+      score: 0,
+      config: playerConfig,
+    };
+    socket.join(roomName);
+    callback({ success: true, roomName, playerId: newPlayerId, gameState: getGameStateForClient(room) });
+    io.to(roomName).emit('updateGameState', getGameStateForClient(room));
+    if (roomName === 'house') {
+      io.emit('updateHouseRoomState', getGameStateForClient(room));
+    }
+    log('info', `[Room: ${roomName}] Player ${playerName} (${newPlayerId}) joined.`);
+  });
 
-// // Display the generated ticket
-// console.log("Tambola Ticket:");
-// for (let row = 0; row < 3; row++) {
-//     let rowString = "";
-//     for (let column = 0; column < 9; column++) {
-//         if (tambolaTicket[column][row]) {
-//             rowString += tambolaTicket[column][row] + "\t";
-//         } else {
-//             rowString += "\t";
-//         }
-//     }
-//     console.log(rowString);
-// }
+  socket.on('updateCallingInterval', ({ roomName, interval }) => {
+    const room = rooms[roomName];
+    if (!room) return;
+    const player = Object.values(room.players).find(p => p.socketId === socket.id);
+    if (player && room.host === player.id) {
+      room.config.callingInterval = interval;
+      if (room.config.autoCalling && room.gameStarted) {
+        clearTimeout(room.autoCallTimer);
+        startAutoCalling(roomName);
+      }
+      io.to(roomName).emit('updateGameState', getGameStateForClient(room));
+      log('info', `[Room: ${roomName}] Calling interval updated to ${interval}ms by host.`);
+    }
+  });
 
+  socket.on('toggleAutoCalling', ({ roomName, autoCalling }) => {
+    const room = rooms[roomName];
+    if (!room) return;
+    const player = Object.values(room.players).find(p => p.socketId === socket.id);
+    if (player && room.host === player.id) {
+      room.config.autoCalling = autoCalling;
+      if (autoCalling && room.gameStarted) {
+        startAutoCalling(roomName);
+      } else {
+        clearTimeout(room.autoCallTimer);
+      }
+      io.to(roomName).emit('updateGameState', getGameStateForClient(room));
+      log('info', `[Room: ${roomName}] Auto-calling set to ${autoCalling} by host.`);
+    }
+  });
 
+  socket.on('manualCall', (roomName) => {
+    const room = rooms[roomName];
+    if (!room) return;
+    const player = Object.values(room.players).find(p => p.socketId === socket.id);
+    if (player && room.host === player.id && !room.config.autoCalling) {
+      drawNumber(roomName);
+    }
+  });
 
-let roomStates = {};
+  socket.on('startGame', (roomName) => {
+    const room = rooms[roomName];
+    if (!room) {
+      log('warn', `[Socket: ${socket.id}] Start game failed: Room ${roomName} not found.`);
+      return;
+    }
+    const player = Object.values(room.players).find(p => p.socketId === socket.id);
+    if (player && room.host === player.id) {
+      room.gameStarted = true;
+      io.to(roomName).emit('gameStarted');
+      if (room.config.autoCalling) {
+        startAutoCalling(roomName);
+      }
+      io.to(roomName).emit('updateGameState', getGameStateForClient(room));
+      log('info', `[Room: ${roomName}] Game started by host.`);
+    } else {
+      log('warn', `[Socket: ${socket.id}] Unauthorized attempt to start game in room ${roomName}.`);
+    }
+  });
 
-io.on('connection', async (socket) => {
-    console.log('a user connected ', socket.id);
+  socket.on('claimPrize', (roomName, prize, struckNumbers, callback) => {
+    const room = rooms[roomName];
+    if (!room) {
+      log('warn', `[Socket: ${socket.id}] Claim failed: Room ${roomName} not found.`);
+      return callback({ error: 'Room not found.' });
+    }
+    const player = Object.values(room.players).find(p => p.socketId === socket.id);
+    if (!player) {
+      log('error', `[Socket: ${socket.id}] Claim failed: Player not found in room ${roomName}.`);
+      return callback({ error: 'Invalid player.' });
+    }
 
-    // Join a room
-    socket.on('join', async (payload) => {
-        const { userName, room } = payload
-        console.log("joined room ", room)
-        socket.join(room)
+    if (!room.config.claims.includes(prize)) {
+      log('warn', `[Room: ${roomName}] Player ${player.name} claim failed: Prize '${prize}' not enabled.`);
+      return callback({ error: 'This prize is not enabled for this game.' });
+    }
 
-        // check if user already exists in the database
-        const userInDB = await User.findOne({ userName: userName, room: room })
-        console.log("userInDB ", userInDB);
-        if (!userInDB) {
-            try {
-                const user = new User({
-                    userName: userName,
-                    scoreCategory: [],
-                    room: room
-                })
-                await user.save();
-            } catch (error) {
-                console.log("error in saving the User", error.message);
-                io.to(room).emit('error', {
-                    error: error.message
-                })
+    if (room.prizes[prize]) {
+      log('warn', `[Room: ${roomName}] Player ${player.name} claim failed: Prize '${prize}' already claimed.`);
+      return callback({ error: 'Prize already claimed.' });
+    }
+
+    const ticket = player.ticket;
+    const numbersToValidate = player.config.autoStrike ? room.numbersCalled : struckNumbers;
+
+    if (!numbersToValidate) {
+      log('error', `[Room: ${roomName}] Player ${player.name} claim failed: Invalid submission for '${prize}'.`);
+      return callback({ error: 'Invalid claim submission.' });
+    }
+
+    let isValid = false;
+    // ... (validation logic remains the same)
+    switch (prize) {
+        case 'Early Five':
+          let count = 0;
+          for (const row of ticket) {
+            for (const num of row) {
+              if (num && numbersToValidate.includes(num)) {
+                count++;
+              }
             }
-            // create a new user with userName
+          }
+          isValid = count >= 5;
+          break;
+        case 'Top Row':
+          isValid = ticket[0].filter(num => num && numbersToValidate.includes(num)).length === 5;
+          break;
+        case 'Middle Row':
+          isValid = ticket[1].filter(num => num && numbersToValidate.includes(num)).length === 5;
+          break;
+        case 'Bottom Row':
+          isValid = ticket[2].filter(num => num && numbersToValidate.includes(num)).length === 5;
+          break;
+        case 'All Corners':
+          const firstRowNumbers = ticket[0].filter(n => n !== null);
+          const lastRowNumbers = ticket[2].filter(n => n !== null);
+          const corners = [
+            firstRowNumbers[0],
+            firstRowNumbers[firstRowNumbers.length - 1],
+            lastRowNumbers[0],
+            lastRowNumbers[lastRowNumbers.length - 1]
+          ];
+          isValid = corners.every(num => numbersToValidate.includes(num));
+          break;
+        case 'Full House':
+          let totalNumbers = 0;
+          for (const row of ticket) {
+            for (const num of row) {
+              if (num) {
+                totalNumbers++;
+              }
+            }
+          }
+          let calledNumbersCount = 0;
+          for (const row of ticket) {
+            for (const num of row) {
+              if (num && numbersToValidate.includes(num)) {
+                calledNumbersCount++;
+              }
+            }
+          }
+          isValid = calledNumbersCount === totalNumbers;
+          break;
+      }
 
+    if (isValid) {
+      room.prizes[prize] = { player: player.name, score: PRIZE_SCORES[prize] };
+      player.score += PRIZE_SCORES[prize];
+      io.to(roomName).emit('prizeClaimed', { player: player.name, prize });
+      io.to(roomName).emit('updateGameState', getGameStateForClient(room));
+      callback({ success: true });
+      log('info', `[Room: ${roomName}] Player ${player.name} successfully claimed '${prize}'.`);
+
+      const allPrizesClaimed = room.config.claims.every(p => room.prizes[p] !== undefined);
+      if (allPrizesClaimed && roomName !== 'house') {
+        log('info', `[Room: ${roomName}] All prizes claimed. Game over.`);
+        io.to(roomName).emit('gameOver');
+        if (room.autoCallTimer) {
+          clearTimeout(room.autoCallTimer);
         }
+        setTimeout(() => {
+          delete rooms[roomName];
+          log('info', `[Room: ${roomName}] Room closed and deleted.`);
+        }, 5000);
+      }
+    } else {
+      log('warn', `[Room: ${roomName}] Player ${player.name} failed claim for '${prize}'.`);
+      callback({ error: 'Claim is not valid.' });
+    }
+  });
 
-        // check if categoryCard already exists in Database
-        const categoryCardInDB = await CategoryCard.findOne({ room: room })
-        if (!categoryCardInDB) {
-            try {
-                // create a new categoryCard 
-                const categoryCard = new CategoryCard({
-                    room: room
-                })
-                await categoryCard.save();
-            } catch (error) {
-                console.log(error);
-            }
+  socket.on('requestTickets', (callback) => {
+    try {
+      const tickets = Array.from({ length: 5 }, () => generateTicket());
+      log('info', `[Socket: ${socket.id}] Generated 5 tickets.`);
+      callback({ tickets });
+    } catch (error) {
+      log('error', 'Error generating tickets:', error);
+      callback({ error: 'Failed to generate tickets.' });
+    }
+  });
 
+  socket.on('reconnectPlayer', (data, callback) => {
+    const { roomName, playerId, playerName } = data;
+    const room = rooms[roomName];
+    if (!room || (roomName !== 'house' && !room.players[playerId])) {
+      log('warn', `[Socket: ${socket.id}] Reconnect failed for player ${playerId} in room ${roomName}.`);
+      return callback({ error: 'Could not reconnect.' });
+    }
+
+    if (roomName === 'house' && !room.players[playerId]) {
+        const newPlayerId = playerId;
+        room.players[newPlayerId] = {
+            ticket: null,
+            name: playerName || 'Player',
+            id: newPlayerId,
+            socketId: socket.id,
+            score: 0,
+            config: { autoStrike: false, autoClaim: false },
+        };
+        log('info', `[Room: house] New player ${newPlayerId} added on reconnect.`);
+    }
+
+    const player = room.players[playerId];
+    player.socketId = socket.id;
+    player.disconnected = false;
+    player.name = playerName || player.name;
+
+    socket.join(roomName);
+    callback({ success: true, playerId: player.id, gameState: getGameStateForClient(room) });
+    io.to(roomName).emit('updateGameState', getGameStateForClient(room));
+    log('info', `[Room: ${roomName}] Player ${player.name} reconnected with socket ${socket.id}.`);
+  });
+
+  socket.on('disconnect', () => {
+    log('info', `User disconnected: ${socket.id}`);
+    for (const roomName in rooms) {
+      const room = rooms[roomName];
+      if (!room) continue;
+      const player = Object.values(room.players).find(p => p.socketId === socket.id);
+      if (player) {
+        player.disconnected = true;
+        io.to(roomName).emit('updateGameState', getGameStateForClient(room));
+        if (roomName === 'house') {
+          io.emit('updateHouseRoomState', getGameStateForClient(room));
         }
-
-        io.to(room).emit('join', {
-            userName: userName,
-            room: room,
-            joined: true
-        });
-
-    })
-
-    socket.on('getTicket', async (payload) => {
-        const { userName, room } = payload
-        console.log("getTicket", userName, room)
-
-        // check if user exists in the database
-        const user = await User.findOne({ userName: userName, room: room })
-        console.log("user in get ticket ", user)
-        // if (!user) {
-        //     io.to(room).emit('error', {
-        //         error: "User does not exist, please join a room"
-        //     })
-        // } else {
-        // check if a ticket exists with the userName and room in the database
-        const ticket = await Ticket.findOne({ userName: userName, room: room })
-        if (!ticket) {
-            let randomNumbers = generateTambolaTicket();
-
-            // save numbers along with userName to the database
-            const ticket = new Ticket({
-                userName: userName,
-                numbers: randomNumbers.map(row => row.map(element => {
-                    return { value: element, struck: false };
-                })),
-                room: room
-            })
-
-            try {
-                await ticket.save();
-
-                // get all tickets in the room
-                const tickets = await Ticket.find({ room: room })
-
-                // get all the userNames in tickets and put in an array
-                const allUserNames = tickets.map((ticket) => ticket.userName)
-                console.log("allUserNames ", allUserNames)
-
-                // get all users
-                const allUsers = await User.find({ room: room })
-                console.log("allUsers ", allUsers)
-
-                io.to(room).emit('private', {
-                    userName: userName,
-                    numbers: randomNumbers,
-                    allUsers: allUsers
-                });
-            } catch (error) {
-                console.log("erron in saving ticket ", error)
-            }
-        } else {
-            // // get all tickets in the room
-            // const tickets = await Ticket.find({ room: room })
-
-            // // get all the userNames in tickets and put in an array
-            // const allUserNames = tickets.map((ticket) => ticket.userName)
-            // console.log("allUserNames ", allUserNames)
-            // get ticket based on userName
-            const ticket = await Ticket.findOne({ userName: userName, room: room })
-
-            // get all users
-            const allUsers = await User.find({ room: room })
-            console.log("allUsers ", allUsers)
-
-            io.to(room).emit('private', {
-                userName: userName,
-                numbers: ticket.numbers.map(row => row.map(obj => obj.value)),
-                allUsers: allUsers
-            });
-        }
-        // }
-
-
-    })
-    let intervalId;
-
-    socket.on('callNumbers', async (payload) => {
-        const { userName, room, timeInterval } = payload;
-        console.log("room in callNumbers", room);
-        let calledNumbers = [];
-
-        intervalId = setInterval(async () => {
-            if (roomStates[room] && roomStates[room].isPaused) {
-                return; // Skip emitting numbers if paused for this room
-            }
-
-            let randomNumber;
-
-            do {
-                randomNumber = Math.floor(Math.random() * 90) + 1;
-            } while (calledNumbers.includes(randomNumber));
-
-            calledNumbers.push(randomNumber);
-            console.log("randomNumber ", randomNumber);
-
-            const calledNumbersInDB = await CalledNumbers.findOne({ room: room });
-            if (calledNumbersInDB) {
-                calledNumbersInDB.numbers.push(randomNumber);
-                console.log("calledNumbers ", calledNumbersInDB);
-                await CalledNumbers.findOneAndUpdate({ room: room }, { numbers: calledNumbersInDB.numbers });
-            } else {
-                const newCalledNumbers = new CalledNumbers({
-                    numbers: [randomNumber],
-                    room: room
-                });
-                await newCalledNumbers.save();
-            }
-
-            io.to(room).emit('calledNumber', calledNumbers);
-
-            if (calledNumbers.length >= 90) {
-                clearInterval(intervalId);
-            }
-        }, timeInterval || 500);
-    });
-
-    socket.on('stopCall', () => {
-        clearInterval(intervalId);
-        delete roomStates[room];
-    });
-
-    socket.on('pauseCall', (payload) => {
-        const { room } = payload;
-        roomStates[room] = { isPaused: true };
-    });
-
-    socket.on('resumeCall', (payload) => {
-        const { room } = payload;
-        roomStates[room] = { isPaused: false };
-    });
-
-    socket.on('struckNumber', async (payload) => {
-        const { number, userName, room } = payload
-        // check if the number is in calledNumbers in database
-        try {
-            const calledNumbers = await CalledNumbers.findOne({ room: room })
-            if (calledNumbers) {
-                console.log("calledNumbers in db for (struck number)", calledNumbers)
-                console.log("struck number exists, ", calledNumbers.numbers.includes(number))
-                if (calledNumbers.numbers.includes(number)) {
-                    console.log("struck number exists, ", calledNumbers.numbers.includes(number))
-                    const userTicket = await Ticket.findOne({ userName: userName, room: room })
-                    if (userTicket) {
-                        for (let i = 0; i < userTicket.numbers.length; i++) {
-                            for (let j = 0; j < userTicket.numbers[i].length; j++) {
-                                if (userTicket.numbers[i][j].value === number) {
-                                    userTicket.numbers[i][j].struck = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        await Ticket.findOneAndUpdate({ userName: userName, room: room }, { numbers: userTicket.numbers })
-                        io.to(room).emit('struckNumber', { number: number, userName: userName });
-                    }
-                }
-            }
-        } catch (error) {
-            console.log(error)
-        }
-
-    })
-
-
-
-    socket.on('category', async (payload) => {
-        const { userName, room, scoreCategory } = payload
-        console.log("category payload ", payload)
-
-        // get the categoryCard and update the category claim
-        const categoryCard = await CategoryCard.findOne({ room: room })
-        console.log("categoryCard ", categoryCard)
-        if (categoryCard) {
-            if (categoryCard.category.find((item) => item.category === scoreCategory.category).claimed === false) {
-                categoryCard.category.find((item) => item.category === scoreCategory.category).claimed = true
-                console.log("upadated categoryCard ", categoryCard)
-                await CategoryCard.findOneAndUpdate({ room: room }, { category: categoryCard.category })
-
-                // Get the user and update the scoreCategory array 
-                const user = await User.findOne({ userName: userName, room: room })
-                console.log("user ", user)
-                if (user) {
-                    if (!user.scoreCategory.includes(scoreCategory)) {
-                        user.scoreCategory.push(scoreCategory)
-                        // get all the scores in the scoreCategory array and add the score
-                        let score = user.scoreCategory.reduce((accumulator, currentValue) => {
-                            return accumulator + currentValue.score;
-                        }, 0);
-                        console.log("score ", score)
-                        // update score in user
-                        await User.findOneAndUpdate({ userName: userName, room: room }, { scoreCategory: user.scoreCategory, score: score })
-                        console.log("user updated")
-                        // get all users
-                        const allUsers = await User.find({ room: room })
-                        io.to(room).emit('category', { userName: userName, scoreCategory: user.scoreCategory, score: score, categoryCard: categoryCard, allUsers: allUsers })
-                    }
-                } else {
-                    console.log("user not found")
-                }
-            }
-
-        }
-
-    })
-
-    // Listen for a chat message
-    socket.on('chat', async (payload) => {
-        const { room, message, userName } = payload;
-        console.log("room, message, userName ", room, message, userName)
-        let chat = new Chat({
-            userName: userName,
-            message: message,
-            room: room
-        })
-        try {
-            await chat.save();
-            io.to(room).emit('chat', payload);
-        } catch (error) {
-            console.error(error);
-        }
-
-    })
-
-
-    // Listen for disconnections
-    socket.on('disconnect', () => {
-        console.log('A user disconnected.');
-    });
-
-
-    // socket.on('chat', async (payload) => {
-    //     console.log("payload", payload);
-    //     const chat = new Chat({
-    //         userName: payload.userName,
-    //         message: payload.message
-    //     });
-
-    //     try {
-    //         await chat.save();
-    //         io.emit('chat', payload);
-    //     } catch (err) {
-    //         console.error('Error saving chat message:', err);
-    //     }
-    // });
+        log('info', `[Room: ${roomName}] Player ${player.name} marked as disconnected.`);
+        break;
+      }
+    }
+  });
 });
 
-server.listen(process.env.PORT || 5000, () => {
-    console.log('listening on port 5000');
-})
+function startAutoCalling(roomName) {
+  const room = rooms[roomName];
+  if (!room) return;
+  if (room.autoCallTimer) {
+    clearTimeout(room.autoCallTimer);
+  }
+  room.autoCallTimer = setTimeout(() => {
+    if (rooms[roomName] && rooms[roomName].config.autoCalling) {
+      drawNumber(roomName);
+      startAutoCalling(roomName);
+    }
+  }, room.config.callingInterval);
+}
+
+function drawNumber(roomName) {
+  const room = rooms[roomName];
+  if (!room) return;
+
+  const remainingNumbers = [];
+  for (let i = 1; i <= 90; i++) {
+    if (!room.numbersCalled.includes(i)) {
+      remainingNumbers.push(i);
+    }
+  }
+
+  if (remainingNumbers.length > 0) {
+    const number = remainingNumbers[Math.floor(Math.random() * remainingNumbers.length)];
+    room.numbersCalled.push(number);
+    room.board[number - 1] = true;
+    io.to(roomName).emit('newNumber', number);
+    io.to(roomName).emit('updateGameState', getGameStateForClient(room));
+    // Optional: log every number draw. Can be noisy.
+    // log('debug', `[Room: ${roomName}] Called number ${number}.`);
+  }
+}
+
+function generateTicket() {
+  const ticket = [];
+  const columns = [[], [], [], [], [], [], [], [], []];
+  for (let i = 1; i <= 90; i++) {
+    const col = Math.floor((i - 1) / 10);
+    columns[col].push(i);
+  }
+  for (let i = 0; i < 3; i++) {
+    ticket.push(Array(9).fill(null));
+  }
+  for (let row = 0; row < 3; row++) {
+    for (let i = 0; i < 5; i++) {
+      let col;
+      do {
+        col = Math.floor(Math.random() * 9);
+      } while (ticket[row][col] !== null);
+      const availableNumbers = columns[col];
+      let num;
+      do {
+        num = availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
+      } while (isNumberInTicket(ticket, num));
+      ticket[row][col] = num;
+    }
+  }
+  return ticket;
+}
+
+function isNumberInTicket(ticket, num) {
+  for (const row of ticket) {
+    if (row.includes(num)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+server.listen(3001, () => {
+  log('info', 'Server started and listening on *:3001');
+});
