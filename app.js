@@ -474,6 +474,7 @@ function isNumberInTicket(ticket, num) {
   return false;
 }
 
-server.listen(3001, () => {
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
   log('info', 'Server started and listening on *:3001');
 });
